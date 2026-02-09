@@ -39,11 +39,12 @@ fn lte(lhs: [u8; 4], rhs: [u8; 4]) -> bool {
 
 pub fn save(filename: &str, w: u32, h: u32, d: u8, c: u8, data: &[u8]) -> std::io::Result<()> {
     let mut file = File::create(filename)?;
+    let mut bytes = Vec::<u8>::with_capacity(w as usize * h as usize);
 
-    file.write_all(b"qoif")?; // Header
-    file.write_all(&u32::to_be_bytes(w))?;
-    file.write_all(&u32::to_be_bytes(h))?;
-    file.write_all(&[d, c])?;
+    bytes.extend_from_slice(b"qoif"); // Header
+    bytes.extend_from_slice(&u32::to_be_bytes(w));
+    bytes.extend_from_slice(&u32::to_be_bytes(h));
+    bytes.extend_from_slice(&[d, c]);
 
     let mut run: i32 = 0;
     let mut prev: [u8; 4] = [0, 0, 0, 255];
@@ -65,7 +66,7 @@ pub fn save(filename: &str, w: u32, h: u32, d: u8, c: u8, data: &[u8]) -> std::i
             let part = std::cmp::min(run, 62) - 1;
             run -= part + 1;
             let chunk: [u8; 1] = [0xc0 | part as u8];
-            file.write_all(&chunk)?;
+            bytes.extend_from_slice(&chunk);
             // println!("{:02b}{:06b}  # QOI_OP_RUN", 0b11, part);
         }
 
@@ -77,23 +78,23 @@ pub fn save(filename: &str, w: u32, h: u32, d: u8, c: u8, data: &[u8]) -> std::i
 
         if seen[look as usize] == curr {
             let chunk: [u8; 1] = [0x00 | look];
-            file.write_all(&chunk)?;
+            bytes.extend_from_slice(&chunk);
             // println!("{:02b}{:06b}  # QOI_OP_INDEX", 0b00, look);
         } else if lte(diff, [3, 3, 3, 0]) {
             let chunk: [u8; 1] = [0x40 | diff[0] << 4 | diff[1] << 2 | diff[2]];
-            file.write_all(&chunk)?;
+            bytes.extend_from_slice(&chunk);
             // println!("{:02b}{:02b}{:02b}{:02b}  # QOI_OP_DIFF", 0b01, diff[0], diff[1], diff[2]);
         } else if lte(luma, [15, 63, 15, 0]) {
             let chunk: [u8; 2] = [0x80 | luma[1], luma[0] << 4 | luma[2]];
-            file.write_all(&chunk)?;
+            bytes.extend_from_slice(&chunk);
             // println!("{:02b}{:06b} {:04b}{:04b}  # QOI_OP_LUMA", 0b10, luma[1], luma[0], luma[2]);
         } else if diff[3] == 0 {
             let chunk: [u8; 4] = [0xfe, curr[0], curr[1], curr[2]];
-            file.write_all(&chunk)?;
+            bytes.extend_from_slice(&chunk);
             // println!("{:08b} {:08b} {:08b} {:08b}  # QOI_OP_RGB", 0xfe, curr[0], curr[1], curr[2]);
         } else {
             let chunk: [u8; 5] = [0xff, curr[0], curr[1], curr[2], curr[3]];
-            file.write_all(&chunk)?;
+            bytes.extend_from_slice(&chunk);
             // println!("{:08b} {:08b} {:08b} {:08b} {:08b}  # QOI_OP_RGBA", 0xff, curr[0], curr[1], curr[2], curr[3]);
         }
 
@@ -105,11 +106,13 @@ pub fn save(filename: &str, w: u32, h: u32, d: u8, c: u8, data: &[u8]) -> std::i
         let part = std::cmp::min(run, 62) - 1;
         run -= part + 1;
         let chunk: [u8; 1] = [0xc0 | part as u8];
-        file.write_all(&chunk)?;
+        bytes.extend_from_slice(&chunk);
         // println!("{:02b}{:06b}  # QOI_OP_RUN", 0b11, part);
     }
 
-    file.write_all(b"\x00\x00\x00\x00\x00\x00\x00\x01")?; // End marker
+    bytes.extend_from_slice(b"\x00\x00\x00\x00\x00\x00\x00\x01"); // End marker
+
+    file.write_all(&bytes)?;  // Dump to file
     file.flush()?;
     Ok(())
 }
